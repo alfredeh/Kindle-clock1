@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="color-scheme" content="light">
+<title>Kindle Clock & Weather</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #fff; color: #111; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px;
+  }
+  .frame {
+    width: min(100%, 680px); min-height: 88vh;
+    border: 2px solid #222; padding: 18px 14px 12px;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: space-between; text-align: center;
+    background: #fff;
+  }
+  .main { width: 100%; margin: auto 0; }
+  #time {
+    font-size: clamp(58px, 14vw, 112px);
+    font-weight: 400; letter-spacing: 1px; line-height: 1.1;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  #date { margin-top: 18px; font-size: clamp(20px, 5vw, 30px); }
+  .weather { margin-top: 36px; font-size: clamp(19px, 4.5vw, 27px); line-height: 1.5; }
+  #temperature { font-size: clamp(30px, 7vw, 42px); margin-bottom: 2px; }
+  #conditions { font-size: clamp(17px, 4vw, 23px); }
+  #locationLabel { font-size: 15px; margin-top: 7px; }
+  .bottom {
+    width: 100%; display: flex; justify-content: space-between;
+    align-items: center; gap: 8px; margin-top: 20px;
+  }
+  button, input {
+    font: inherit; color: #111; background: #fff; border: 2px solid #222;
+    border-radius: 0; padding: 8px 10px; min-height: 42px;
+  }
+  button { cursor: pointer; }
+  button:focus, input:focus { outline: 2px solid #555; outline-offset: 2px; }
+  #formatButton { font-size: 16px; }
+  #rotateButton { font-size: 16px; }
+  .weatherTools { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+  #city { width: 56%; max-width: 250px; font-size: 16px; }
+  #refresh { font-size: 15px; }
+  #status { min-height: 20px; font-size: 13px; margin-top: 6px; }
+  .rotated {
+    position: fixed; width: 100vh; height: 100vw; max-width: none;
+    min-height: 0; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+  @media (orientation: landscape) {
+    .frame { min-height: 94vh; padding: 10px 16px; }
+    #date { margin-top: 6px; }
+    .weather { margin-top: 12px; }
+    .main { margin: 5px 0; }
+    .bottom { margin-top: 6px; }
+  }
+  @media print {
+    .bottom, .weatherTools, #status { display: none; }
+    .frame { border: 0; min-height: 100vh; }
+  }
+</style>
+</head>
+<body>
+  <main class="frame" id="frame">
+    <section class="main">
+      <div id="time">22:10</div>
+      <div id="date">Wednesday, 28 October 2026</div>
+      <section class="weather" aria-label="Weather">
+        <div id="temperature">--°C</div>
+        <div id="conditions">Weather loading…</div>
+        <div id="locationLabel">Augsburg</div>
+        <div class="weatherTools">
+          <input id="city" type="text" value="Augsburg" aria-label="City for weather" autocomplete="off">
+          <button id="refresh" type="button">Weather</button>
+        </div>
+        <div id="status" role="status">Weather needs an internet connection.</div>
+      </section>
+    </section>
+    <footer class="bottom">
+      <button id="formatButton" type="button">12/24</button>
+      <button id="rotateButton" type="button">Rotate</button>
+    </footer>
+  </main>
+<script>
+(function () {
+  var is24 = true;
+  var rotated = false;
+  var timeEl = document.getElementById('time');
+  var dateEl = document.getElementById('date');
+  var frame = document.getElementById('frame');
+  var cityInput = document.getElementById('city');
+  var tempEl = document.getElementById('temperature');
+  var conditionsEl = document.getElementById('conditions');
+  var locationEl = document.getElementById('locationLabel');
+  var statusEl = document.getElementById('status');
+
+  function updateClock() {
+    var now = new Date();
+    var opts = { hour: '2-digit', minute: '2-digit', hour12: !is24 };
+    timeEl.textContent = now.toLocaleTimeString([], opts);
+    dateEl.textContent = now.toLocaleDateString([], {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+  }
+  document.getElementById('formatButton').addEventListener('click', function () {
+    is24 = !is24;
+    updateClock();
+    this.textContent = is24 ? '24-hour' : '12-hour';
+  });
+  document.getElementById('rotateButton').addEventListener('click', function () {
+    rotated = !rotated;
+    if (rotated) frame.className = 'frame rotated';
+    else frame.className = 'frame';
+    this.textContent = rotated ? 'Unrotate' : 'Rotate';
+  });
+
+  function weatherDescription(code) {
+    var descriptions = {
+      0: 'Clear sky', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+      45: 'Fog', 48: 'Freezing fog', 51: 'Light drizzle', 53: 'Drizzle',
+      55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+      61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain',
+      67: 'Heavy freezing rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow',
+      77: 'Snow grains', 80: 'Rain showers', 81: 'Rain showers', 82: 'Heavy showers',
+      85: 'Snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm',
+      96: 'Thunderstorm with hail', 99: 'Thunderstorm with hail'
+    };
+    return descriptions[code] || 'Current conditions';
+  }
+
+  function loadWeather() {
+    var city = cityInput.value.replace(/^\s+|\s+$/g, '');
+    if (!city) {
+      statusEl.textContent = 'Enter a city name first.';
+      return;
+    }
+    statusEl.textContent = 'Loading weather…';
+    tempEl.textContent = '--°C';
+    conditionsEl.textContent = 'Please wait';
+    var geoUrl = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
+      encodeURIComponent(city) + '&count=1&language=en&format=json';
+    fetch(geoUrl).then(function (r) {
+      if (!r.ok) throw new Error('Could not find city');
+      return r.json();
+    }).then(function (geo) {
+      if (!geo.results || !geo.results.length) throw new Error('City not found. Try another spelling.');
+      var place = geo.results[0];
+      var url = 'https://api.open-meteo.com/v1/forecast?latitude=' +
+        encodeURIComponent(place.latitude) + '&longitude=' +
+        encodeURIComponent(place.longitude) +
+        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto';
+      return fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('Weather service unavailable');
+        return r.json();
+      }).then(function (data) {
+        var c = data.current;
+        tempEl.textContent = Math.round(c.temperature_2m) + '°C';
+        conditionsEl.textContent = weatherDescription(c.weather_code) +
+          ' · feels like ' + Math.round(c.apparent_temperature) + '°C';
+        locationEl.textContent = place.name + (place.country ? ', ' + place.country : '');
+        statusEl.textContent = 'Humidity ' + c.relative_humidity_2m +
+          '% · Wind ' + Math.round(c.wind_speed_10m) + ' km/h';
+      });
+    }).catch(function (err) {
+      conditionsEl.textContent = 'Weather unavailable';
+      statusEl.textContent = err.message || 'Check your internet connection and try again.';
+    });
+  }
+  document.getElementById('refresh').addEventListener('click', loadWeather);
+  cityInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadWeather();
+  });
+
+  updateClock();
+  window.setInterval(updateClock, 1000);
+  loadWeather();
+}());
+</script>
+</body>
+</html>
